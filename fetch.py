@@ -4,6 +4,7 @@ import sys
 import oracledb
 
 CURRENT_YEAR = 2023
+MIN_YEAR = 2016
 
 def normalize_subject_id(subject_id):
     """
@@ -47,8 +48,9 @@ if __name__ == "__main__":
             cursor.execute("""
                 SELECT * FROM cis_course_catalog
                 WHERE subject_id=:subject
+                AND academic_year >= :min_year
                 ORDER BY academic_year DESC
-            """, subject=subject)
+            """, subject=subject, min_year=MIN_YEAR)
 
             # Return results as dict
             columns = [col[0].lower() for col in cursor.description]
@@ -65,8 +67,6 @@ if __name__ == "__main__":
             out["offered_summer"] = row["is_offered_summer_term"] == "Y"
             out["public"] = True
             out["level"] = row["hgn_code"]
-            # TODO: update FireRoad documentation to reflect possibility of
-            # level = "H" or "N"
 
             if int(row["academic_year"]) < CURRENT_YEAR:
                 # This is considered a historical subject (for

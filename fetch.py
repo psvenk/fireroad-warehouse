@@ -8,6 +8,8 @@ CURRENT_YEAR = 2023
 MIN_YEAR = 2016
 
 subject_id_regex = r"([A-Z0-9.-]+)(\[J\])?(,?)"
+schedule_non_evening_regex = r"([MTWRFS]+)(\d(\.\d+)?(-\d(\.\d+)?)?)"
+schedule_evening_regex = r"([MTWRFS]+)\s+EVE\s*\((.+)\)"
 
 def normalize_subject_id(subject_id):
     """
@@ -15,6 +17,109 @@ def normalize_subject_id(subject_id):
     suffix for joint subjects.
     """
     return subject_id.strip().rstrip("J")
+
+def fetch_schedule(cursor, subject_id, year):
+    """
+    Given a cursor to the database, fetch the schedule for a subject in a
+    specified academic year (given as an int) and form a schedule string in a
+    standardized format.
+
+    The format for a schedule is a semicolon-separated list of sections, where
+    each section is a comma-separated list in which:
+    - the first entry of a section is "Lecture", "Recitation", "Lab", or
+      "Design";
+    - each subsequent entry of a section is a meeting, where
+      + each meeting is either "TBA" or a slash-separated list;
+      + the first entry is the room number; e.g.,
+          "54-1423", "VIRTUAL", "NORTH SHORE";
+      + the second entry is one or more characters from "M", "T", "W", "R",
+          "F", "S";
+      + the third entry is either "0" or "1";
+      + if the third entry is "0", the fourth entry is a non-evening hour;
+          e.g., "9" or "1-2.30";
+      + if the third entry is "1", the fourth entry is an evening hour;
+          e.g., "4-7 PM" or "5.30 PM".
+
+    For example, the following schedule would lead to the following output:
+
+    Schedule:
+        Lecture: MWF 10am (10-250)
+        Recitation: M 11am (34-101), M 1pm (34-303), M 7pm (34-302), T 10am (34-301)
+
+    Output:
+        Lecture,10-250/MWF/0/10;Recitation,34-301/M/0/11,34-302/M/1/7 PM,34-301/T/0/10
+
+    Returns a tuple (fall, iap, spring) where each element may be str or
+    NoneType.
+    """
+    def fetch_term(term_code):
+        lectures = []
+        recitations = []
+        labs = []
+        designs = []
+
+        cursor.execute("""
+            SELECT meet_place, meet_time, is_lecture_section,
+                is_recitation_section, is_lab_section, is_design_section
+            FROM subject_offered
+            WHERE subject_id = :subject_id
+            AND term_code = :term_code
+            AND is_master_section = 'N'
+            ORDER BY is_lecture_section DESC, is_recitation_section DESC,
+                is_lab_section DESC, section_id
+        """, subject_id=subject_id, term_code=term_code)
+        for meet_place, meet_time, lec, rec, lab, des in cursor:
+            if lec == "Y":
+                dest = lectures
+            elif rec == "Y":
+                dest = recitations
+            elif lab == "Y":
+                dest = labs
+            elif des == "Y":
+                dest = designs
+            else:
+                print(f"Encountered unknown section type for subject {subject_id}")
+                continue
+
+            if not meet_place or not meet_time:
+                dest.append("TBA")
+                continue
+
+            for time in meet_time.split(","):
+                time = time.strip()
+
+                match = re.match(schedule_non_evening_regex, time)
+                if match:
+                    days = match[1]
+                    hours = match[2]
+                    dest.append(f"{meet_place}/{days}/0/{hours}")
+                    continue
+
+                match = re.match(schedule_evening_regex, time)
+                if match:
+                    days = match[1]
+                    hours = match[2]
+                    dest.append(f"{meet_place}/{days}/1/{hours}")
+                    continue
+
+                dest.append("TBA")
+                print(f'Could not parse schedule "{meet_time}" for subject {subject_id}')
+
+        out = ""
+        if lectures:
+            out += ";" + ",".join(["Lecture", *lectures])
+        if recitations:
+            out += ";" + ",".join(["Recitation", *recitations])
+        if labs:
+            out += ";" + ",".join(["Lab", *labs])
+        if designs:
+            out += ";" + ",".join(["Design", *designs])
+        return out[1:] or None
+
+    fall = fetch_term(f"{year}FA")
+    iap = fetch_term(f"{year}JA")
+    spring = fetch_term(f"{year}SP")
+    return fall, iap, spring
 
 if __name__ == "__main__":
     username = os.environ.get("WAREHOUSE_USERNAME")
@@ -39,9 +144,9 @@ if __name__ == "__main__":
     oracledb.init_oracle_client()
 
     try:
-        subject = sys.argv[1]
+        subject_id = sys.argv[1]
     except IndexError:
-        print(f"Usage: {sys.argv[0]} <subject>")
+        print(f"Usage: {sys.argv[0]} <subject_id>")
         exit(1)
 
     with oracledb.connect(dsn) as connection:
@@ -50,10 +155,10 @@ if __name__ == "__main__":
 
             cursor.execute("""
                 SELECT * FROM cis_course_catalog
-                WHERE subject_id = :subject
+                WHERE subject_id = :subject_id
                 AND academic_year >= :min_year
                 ORDER BY academic_year DESC
-            """, subject=subject, min_year=MIN_YEAR)
+            """, subject_id=subject_id, min_year=MIN_YEAR)
 
             # Return results as dict
             columns = [col[0].lower() for col in cursor.description]
@@ -101,7 +206,7 @@ if __name__ == "__main__":
                     for x in row["meets_with_subjects"].split(",")
                 ]
 
-            # TODO quarter_information (requires schedule)
+            # TODO quarter_information (term_duration)
 
             if row["is_offered_this_year"] != "Y":
                 # Not offered this year
@@ -169,7 +274,14 @@ if __name__ == "__main__":
                     out["hass_attribute"] = hass_res[0]
 
 
-            # TODO schedule
+            schedule_fall, schedule_iap, schedule_spring = (
+                fetch_schedule(cursor, subject_id, year))
+            if schedule_fall:
+                out["schedule"] = out["schedule_fall"] = schedule_fall
+            if schedule_iap:
+                out["schedule"] = out["schedule_IAP"] = schedule_iap
+            if schedule_spring:
+                out["schedule"] = out["schedule_spring"] = schedule_spring
 
             # TODO related_subjects
 

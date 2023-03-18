@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
             cursor.execute("""
                 SELECT * FROM cis_course_catalog
-                WHERE subject_id=:subject
+                WHERE subject_id = :subject
                 AND academic_year >= :min_year
                 ORDER BY academic_year DESC
             """, subject=subject, min_year=MIN_YEAR)
@@ -124,19 +124,20 @@ if __name__ == "__main__":
                 row["communication_requirement"] = "CI-HW"
             # row["communication_requirement"] does not include CI-M
 
-            # TODO hass_attribute (requires cis_hass_attribute table)
-
             out["gir_attribute"] = row["gir_attribute"]
 
             # TODO children, parent
 
-            if "New number" in row["status_change"]:
-                print("Subject has been renumbered")
-                exit(1)
+            if row["status_change"] is not None:
+                if "New number" in row["status_change"]:
+                    print("Subject has been renumbered")
+                    exit(1)
 
-            if match := re.match(r"Old number:\s+(" + subject_id_regex + r")",
-                                 row["status_change"]):
-                out["old_id"] = normalize_subject_id(match[1])
+                match = re.match(
+                    r"Old number:\s+(" + subject_id_regex + r")",
+                    row["status_change"])
+                if match:
+                    out["old_id"] = normalize_subject_id(match[1])
 
             out["lecture_units"] = row["lecture_units"]
             out["lab_units"] = row["lab_units"]
@@ -144,7 +145,8 @@ if __name__ == "__main__":
             out["preparation_units"] = row["preparation_units"]
             out["is_variable_units"] = row["is_variable_units"] == "Y"
 
-            # TODO is_half_class
+            # is_half_class is not populated by the FireRoad scraper and can be
+            # added via corrections
 
             # TODO has_final
 
@@ -152,13 +154,28 @@ if __name__ == "__main__":
 
             # TODO prerequisites/corequisites
 
-            # TODO schedule
-
             out["url"] = row["on_line_page_number"] + "#" + out["subject_id"]
+
+            hass_attribute_raw = row["hass_attribute"]
+
+            if hass_attribute_raw:
+                cursor.execute("""
+                    SELECT description_in_bulletin FROM cis_hass_attribute
+                    WHERE hass_attribute = :hass_attribute
+                """, hass_attribute=hass_attribute_raw)
+
+                hass_res = cursor.fetchone()
+                if hass_res is not None:
+                    out["hass_attribute"] = hass_res[0]
+
+
+            # TODO schedule
 
             # TODO related_subjects
 
             # TODO course evals
+
+            # TODO support corrections
 
             for k, v in out.items():
                 print(k.ljust(20) + str(v))

@@ -1,10 +1,13 @@
 import os
 import sys
+import re
 
 import oracledb
 
 CURRENT_YEAR = 2023
 MIN_YEAR = 2016
+
+subject_id_regex = r"([A-Z0-9.-]+)(\[J\])?(,?)"
 
 def normalize_subject_id(subject_id):
     """
@@ -58,6 +61,10 @@ if __name__ == "__main__":
 
             row = cursor.fetchone()
 
+            if row is None:
+                print("Subject not found")
+                exit(1)
+
             out["subject_id"] = row["subject_id"]
             out["title"] = row["subject_title"]
             out["total_units"] = row["total_units"]
@@ -68,11 +75,13 @@ if __name__ == "__main__":
             out["public"] = True
             out["level"] = row["hgn_code"]
 
-            if int(row["academic_year"]) < CURRENT_YEAR:
+            year = int(row["academic_year"])
+
+            if year < CURRENT_YEAR:
                 # This is considered a historical subject (for
                 # compatibility with FireRoad)
                 out["is_historical"] = True
-                out["source_semester"] = "spring-" + row["academic_year"]
+                out["source_semester"] = f"spring-{year}"
 
             if row["joint_subjects"] is not None:
                 out["joint_subjects"] = [
@@ -91,6 +100,65 @@ if __name__ == "__main__":
                     normalize_subject_id(x)
                     for x in row["meets_with_subjects"].split(",")
                 ]
+
+            # TODO quarter_information (requires schedule)
+
+            if row["is_offered_this_year"] != "Y":
+                # Not offered this year
+                out["not_offered_year"] = f"{year-1}-{year}"
+
+            instructors = []
+            if ((out["offered_fall"] or out["offered_summer"]) and
+                    row["fall_instructors"] is not None):
+                instructors.append(f"Fall: {row['fall_instructors']}")
+            if ((out["offered_spring"] or out["offered_IAP"]) and
+                    row["spring_instructors"] is not None):
+                instructors.append(f"Spring: {row['spring_instructors']}")
+            if instructors:
+                out["instructors"] = instructors
+
+            comm_req_raw = row["comm_req_attribute"]
+            if comm_req_raw == "CIH":
+                row["communication_requirement"] = "CI-H"
+            elif comm_req_raw == "CIHW":
+                row["communication_requirement"] = "CI-HW"
+            # row["communication_requirement"] does not include CI-M
+
+            # TODO hass_attribute (requires cis_hass_attribute table)
+
+            out["gir_attribute"] = row["gir_attribute"]
+
+            # TODO children, parent
+
+            if "New number" in row["status_change"]:
+                print("Subject has been renumbered")
+                exit(1)
+
+            if match := re.match(r"Old number:\s+(" + subject_id_regex + r")",
+                                 row["status_change"]):
+                out["old_id"] = normalize_subject_id(match[1])
+
+            out["lecture_units"] = row["lecture_units"]
+            out["lab_units"] = row["lab_units"]
+            out["design_units"] = row["design_units"]
+            out["preparation_units"] = row["preparation_units"]
+            out["is_variable_units"] = row["is_variable_units"] == "Y"
+
+            # TODO is_half_class
+
+            # TODO has_final
+
+            out["description"] = row["subject_description"]
+
+            # TODO prerequisites/corequisites
+
+            # TODO schedule
+
+            out["url"] = row["on_line_page_number"] + "#" + out["subject_id"]
+
+            # TODO related_subjects
+
+            # TODO course evals
 
             for k, v in out.items():
                 print(k.ljust(20) + str(v))

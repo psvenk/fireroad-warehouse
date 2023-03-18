@@ -7,149 +7,32 @@ import oracledb
 CURRENT_YEAR = 2023
 MIN_YEAR = 2016
 
-subject_id_regex = r"([A-Z0-9.-]+)(\[J\])?(,?)"
-schedule_non_evening_regex = r"([MTWRFS]+)(\d(\.\d+)?(-\d(\.\d+)?)?)"
-schedule_evening_regex = r"([MTWRFS]+)\s+EVE\s*\((.+)\)"
+SUBJECT_ID_REGEX = r"([A-Z0-9.-]+)(\[J\])?(,?)"
+SCHEDULE_NON_EVENING_REGEX = r"([MTWRFS]+)(\d(\.\d+)?(-\d(\.\d+)?)?)"
+SCHEDULE_EVENING_REGEX = r"([MTWRFS]+)\s+EVE\s*\((.+)\)"
 
-def normalize_subject_id(subject_id):
-    """
-    Normalize a subject ID by stripping leading/trailing whitespace and the "J"
-    suffix for joint subjects.
-    """
-    return subject_id.strip().rstrip("J")
+username = os.environ.get("WAREHOUSE_USERNAME")
+password = os.environ.get("WAREHOUSE_PASSWORD")
 
-def fetch_schedule(cursor, subject_id, year):
-    """
-    Given a cursor to the database, fetch the schedule for a subject in a
-    specified academic year (given as an int) and form a schedule string in a
-    standardized format.
+if username is None or password is None:
+    print("WAREHOUSE_USERNAME and/or WAREHOUSE_PASSWORD not provided")
+    exit(1)
+elif "/" in username:
+    print("WAREHOUSE_USERNAME contains forbidden character '/'")
+    exit(1)
+elif "@" in password:
+    print("WAREHOUSE_PASSWORD contains forbidden character '@'")
+    exit(1)
 
-    The format for a schedule is a semicolon-separated list of sections, where
-    each section is a comma-separated list in which:
-    - the first entry of a section is "Lecture", "Recitation", "Lab", or
-      "Design";
-    - each subsequent entry of a section is a meeting, where
-      + each meeting is either "TBA" or a slash-separated list;
-      + the first entry is the room number; e.g.,
-          "54-1423", "VIRTUAL", "NORTH SHORE";
-      + the second entry is one or more characters from "M", "T", "W", "R",
-          "F", "S";
-      + the third entry is either "0" or "1";
-      + if the third entry is "0", the fourth entry is a non-evening hour;
-          e.g., "9" or "1-2.30";
-      + if the third entry is "1", the fourth entry is an evening hour;
-          e.g., "4-7 PM" or "5.30 PM".
+cp = oracledb.ConnectParams(user=username, password=password)
+dsn = "warehouse"
+del username, password
 
-    For example, the following schedule would lead to the following output:
+# We need to use the "thick" mode so that ldap.ora and sqlplus.ora are read
+oracledb.init_oracle_client()
 
-    Schedule:
-        Lecture: MWF 10am (10-250)
-        Recitation: M 11am (34-101), M 1pm (34-303), M 7pm (34-302), T 10am (34-301)
-
-    Output:
-        Lecture,10-250/MWF/0/10;Recitation,34-301/M/0/11,34-302/M/1/7 PM,34-301/T/0/10
-
-    Returns a tuple (fall, iap, spring) where each element may be str or
-    NoneType.
-    """
-    def fetch_term(term_code):
-        lectures = []
-        recitations = []
-        labs = []
-        designs = []
-
-        cursor.execute("""
-            SELECT meet_place, meet_time, is_lecture_section,
-                is_recitation_section, is_lab_section, is_design_section
-            FROM subject_offered
-            WHERE subject_id = :subject_id
-            AND term_code = :term_code
-            AND is_master_section = 'N'
-            ORDER BY is_lecture_section DESC, is_recitation_section DESC,
-                is_lab_section DESC, section_id
-        """, subject_id=subject_id, term_code=term_code)
-        for meet_place, meet_time, lec, rec, lab, des in cursor:
-            if lec == "Y":
-                dest = lectures
-            elif rec == "Y":
-                dest = recitations
-            elif lab == "Y":
-                dest = labs
-            elif des == "Y":
-                dest = designs
-            else:
-                print(f"Encountered unknown section type for subject {subject_id}")
-                continue
-
-            if not meet_place or not meet_time:
-                dest.append("TBA")
-                continue
-
-            for time in meet_time.split(","):
-                time = time.strip()
-
-                match = re.match(schedule_non_evening_regex, time)
-                if match:
-                    days = match[1]
-                    hours = match[2]
-                    dest.append(f"{meet_place}/{days}/0/{hours}")
-                    continue
-
-                match = re.match(schedule_evening_regex, time)
-                if match:
-                    days = match[1]
-                    hours = match[2]
-                    dest.append(f"{meet_place}/{days}/1/{hours}")
-                    continue
-
-                dest.append("TBA")
-                print(f'Could not parse schedule "{meet_time}" for subject {subject_id}')
-
-        out = ""
-        if lectures:
-            out += ";" + ",".join(["Lecture", *lectures])
-        if recitations:
-            out += ";" + ",".join(["Recitation", *recitations])
-        if labs:
-            out += ";" + ",".join(["Lab", *labs])
-        if designs:
-            out += ";" + ",".join(["Design", *designs])
-        return out[1:] or None
-
-    fall = fetch_term(f"{year}FA")
-    iap = fetch_term(f"{year}JA")
-    spring = fetch_term(f"{year}SP")
-    return fall, iap, spring
-
-if __name__ == "__main__":
-    username = os.environ.get("WAREHOUSE_USERNAME")
-    password = os.environ.get("WAREHOUSE_PASSWORD")
-
-    if username is None or password is None:
-        print("WAREHOUSE_USERNAME and/or WAREHOUSE_PASSWORD not provided")
-        exit(1)
-    elif "/" in username:
-        print("WAREHOUSE_USERNAME contains forbidden character '/'")
-        exit(1)
-    elif "@" in password:
-        print("WAREHOUSE_PASSWORD contains forbidden character '@'")
-        exit(1)
-
-    # We need to use a DSN instead of supplying username, password, service_name
-    # because we are using LDAP instead of a tsnames.ora file
-    dsn = f"{username}/{password}@warehouse"
-
-    # We also need to use the "thick" mode so that ldap.ora and sqlplus.ora are
-    # read
-    oracledb.init_oracle_client()
-
-    try:
-        subject_id = sys.argv[1]
-    except IndexError:
-        print(f"Usage: {sys.argv[0]} <subject_id>")
-        exit(1)
-
-    with oracledb.connect(dsn) as connection:
+def fetch_subject(subject_id):
+    with oracledb.connect(dsn, params=cp) as connection:
         with connection.cursor() as cursor:
             out = {}
 
@@ -239,7 +122,7 @@ if __name__ == "__main__":
                     exit(1)
 
                 match = re.match(
-                    r"Old number:\s+(" + subject_id_regex + r")",
+                    r"Old number:\s+(" + SUBJECT_ID_REGEX + r")",
                     row["status_change"])
                 if match:
                     out["old_id"] = normalize_subject_id(match[1])
@@ -289,5 +172,125 @@ if __name__ == "__main__":
 
             # TODO support corrections
 
-            for k, v in out.items():
-                print(k.ljust(20) + str(v))
+            return out
+
+def normalize_subject_id(subject_id):
+    """
+    Normalize a subject ID by stripping leading/trailing whitespace and the "J"
+    suffix for joint subjects.
+    """
+    return subject_id.strip().rstrip("J")
+
+def fetch_schedule(cursor, subject_id, year):
+    """
+    Given a cursor to the database, fetch the schedule for a subject in a
+    specified academic year (given as an int) and form a schedule string in a
+    standardized format.
+
+    The format for a schedule is a semicolon-separated list of sections, where
+    each section is a comma-separated list in which:
+    - the first entry of a section is "Lecture", "Recitation", "Lab", or
+      "Design";
+    - each subsequent entry of a section is a meeting, where
+      + each meeting is either "TBA" or a slash-separated list;
+      + the first entry is the room number; e.g.,
+          "54-1423", "VIRTUAL", "NORTH SHORE";
+      + the second entry is one or more characters from "M", "T", "W", "R",
+          "F", "S";
+      + the third entry is either "0" or "1";
+      + if the third entry is "0", the fourth entry is a non-evening hour;
+          e.g., "9" or "1-2.30";
+      + if the third entry is "1", the fourth entry is an evening hour;
+          e.g., "4-7 PM" or "5.30 PM".
+
+    For example, the following schedule would lead to the following output:
+
+    Schedule:
+        Lecture: MWF 10am (10-250)
+        Recitation: M 11am (34-101), M 1pm (34-303), M 7pm (34-302), T 10am (34-301)
+
+    Output:
+        Lecture,10-250/MWF/0/10;Recitation,34-301/M/0/11,34-302/M/1/7 PM,34-301/T/0/10
+
+    Returns a tuple (fall, iap, spring) where each element may be str or
+    NoneType.
+    """
+    def fetch_term(term_code):
+        lectures = []
+        recitations = []
+        labs = []
+        designs = []
+
+        cursor.execute("""
+            SELECT meet_place, meet_time, is_lecture_section,
+                is_recitation_section, is_lab_section, is_design_section
+            FROM subject_offered
+            WHERE subject_id = :subject_id
+            AND term_code = :term_code
+            AND is_master_section = 'N'
+            ORDER BY is_lecture_section DESC, is_recitation_section DESC,
+                is_lab_section DESC, section_id
+        """, subject_id=subject_id, term_code=term_code)
+        for meet_place, meet_time, lec, rec, lab, des in cursor:
+            if lec == "Y":
+                dest = lectures
+            elif rec == "Y":
+                dest = recitations
+            elif lab == "Y":
+                dest = labs
+            elif des == "Y":
+                dest = designs
+            else:
+                print(f"Encountered unknown section type for subject {subject_id}")
+                continue
+
+            if not meet_place or not meet_time:
+                dest.append("TBA")
+                continue
+
+            for time in meet_time.split(","):
+                time = time.strip()
+
+                match = re.match(SCHEDULE_NON_EVENING_REGEX, time)
+                if match:
+                    days = match[1]
+                    hours = match[2]
+                    dest.append(f"{meet_place}/{days}/0/{hours}")
+                    continue
+
+                match = re.match(SCHEDULE_EVENING_REGEX, time)
+                if match:
+                    days = match[1]
+                    hours = match[2]
+                    dest.append(f"{meet_place}/{days}/1/{hours}")
+                    continue
+
+                dest.append("TBA")
+                print(f'Could not parse schedule "{meet_time}" for subject {subject_id}')
+
+        out = ""
+        if lectures:
+            out += ";" + ",".join(["Lecture", *lectures])
+        if recitations:
+            out += ";" + ",".join(["Recitation", *recitations])
+        if labs:
+            out += ";" + ",".join(["Lab", *labs])
+        if designs:
+            out += ";" + ",".join(["Design", *designs])
+        return out[1:] or None
+
+    fall = fetch_term(f"{year}FA")
+    iap = fetch_term(f"{year}JA")
+    spring = fetch_term(f"{year}SP")
+    return fall, iap, spring
+
+if __name__ == "__main__":
+    try:
+        subject_id = sys.argv[1]
+    except IndexError:
+        print(f"Usage: {sys.argv[0]} <subject_id>")
+        exit(1)
+
+    out = fetch_subject(subject_id)
+    for k, v in out.items():
+        print(k.ljust(20) + str(v))

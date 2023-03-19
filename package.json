@@ -18,6 +18,9 @@
   },
   "homepage": "https://github.com/psvenk/fireroad-warehouse#readme",
   "dependencies": {
+    "@types/oracledb": "^5.2.4",
+    "dotenv": "^16.0.3",
+    "oracledb": "^5.5.0",
     "typescript": "^5.0.2"
   }
 }

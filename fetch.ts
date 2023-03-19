@@ -154,7 +154,7 @@ Promise<Subject | undefined> {
       // Subject has been renumbered
       return undefined;
     }
-    let match = row.STATUS_CHANGE.match(/Old number:\s+(.*)/)
+    let match = row.STATUS_CHANGE.match(/Old number:\s+(.*)/);
     if (match) {
       match = match[1].match(SUBJECT_ID_REGEX);
       if (match) {
@@ -174,6 +174,16 @@ Promise<Subject | undefined> {
   if (row.HASS_ATTRIBUTE) {
     out.hass_attribute = await lookup_hass_attribute(row.HASS_ATTRIBUTE);
   }
+
+  [out.schedule_fall, out.schedule_iap, out.schedule_spring] =
+    await fetch_schedules(out.subject_id, year);
+  out.schedule = out.schedule_spring ?? out.schedule_iap ?? out.schedule_fall;
+
+  // TODO related subjects
+
+  // TODO course evals
+
+  // TODO support corrections
 
   return out;
 }
@@ -222,6 +232,144 @@ Promise<string | undefined> {
     }
   }
   return undefined;
+}
+
+async function fetch_schedules(subject_id: string, year: number):
+Promise<[string | undefined, string | undefined, string | undefined]> {
+  /**
+   * Query the database and fetch the schedule(s) for a subject in a specified
+   * academic year (given as an int) and form a schedule string in a
+   * standardized format.
+   *
+   * The format for a schedule is a semicolon-separated list of sections, where
+   * each section is a comma-separated list in which:
+   * - the first entry of a section is "Lecture", "Recitation", "Lab", or
+   *   "Design";
+   * - each subsequent entry of a section is a meeting, where
+   *   + each meeting is either "TBA" or a slash-separated list;
+   *   + the first entry is the room number; e.g.,
+   *      "54-1423", "VIRTUAL", "NORTH SHORE";
+   *   + the second entry is one or more characters from "M", "T", "W", "R",
+   *      "F", "S";
+   *   + the third entry is either "0" or "1";
+   *   + if the third entry is "0", the fourth entry is a non-evening hour;
+   *       e.g., "9" or "1-2.30";
+   *   + if the third entry is "1", the fourth entry is an evening hour;
+   *       e.g., "4-7 PM" or "5.30 PM".
+   *
+   * For example, the following schedule would lead to the following output:
+   *
+   * Schedule:
+   *     Lecture: MWF 10am (10-250)
+   *     Recitation: M 11am (34-101), M 1pm (34-303), M 7pm (34-302), T 10am (34-301)
+   *
+   * Output:
+   *     Lecture,10-250/MWF/0/10;Recitation,34-301/M/0/11,34-302/M/1/7 PM,34-301/T/0/10
+   *
+   * Returns an array [fall, iap, spring], where each may be undefined.
+   */
+  const fetch_term = async (term_code: string): Promise<string | undefined> => {
+    const lectures: string[] = [];
+    const recitations: string[] = [];
+    const labs: string[] = [];
+    const designs: string[] = [];
+
+    let connection: oracledb.Connection | undefined;
+    let rows: (string | undefined)[][];
+    try {
+      connection = await pool.getConnection();
+      const result = await connection.execute<(string | undefined)[]>(
+        `SELECT meet_place, meet_time, is_lecture_section,
+          is_recitation_section, is_lab_section, is_design_section
+        FROM subject_offered
+        WHERE subject_id = :subject_id
+        AND term_code = :term_code
+        AND is_master_section = 'N'
+        ORDER BY is_lecture_section DESC, is_recitation_section DESC,
+          is_lab_section DESC, section_id`,
+        { subject_id, term_code }
+      );
+      if (result.rows === undefined) {
+        return undefined;
+      }
+      rows = result.rows;
+    } catch (err) {
+      throw err;
+    } finally {
+      if (connection) {
+        try {
+          await connection.close();
+        } catch (err) {
+          throw err;
+        }
+      }
+    }
+
+    for (const [meet_place, meet_time, lec, rec, lab, des] of rows) {
+      let dest;
+      if (lec === "Y") {
+        dest = lectures;
+      } else if (rec === "Y") {
+        dest = recitations;
+      } else if (lab === "Y") {
+        dest = labs;
+      } else if (des === "Y") {
+        dest = designs;
+      } else {
+        throw `Encountered unknown section type for subject ${subject_id}`;
+      }
+
+      if (!meet_place || !meet_time) {
+        dest.push("TBA");
+        continue;
+      }
+
+      for (let time of meet_time.split(",")) {
+        time = time.trim();
+
+        let match = time.match(SCHEDULE_NON_EVENING_REGEX);
+        if (match) {
+          const days = match[1];
+          const hours = match[2];
+          dest.push(`${meet_place}/${days}/0/${hours}`);
+          continue;
+        }
+
+        match = time.match(SCHEDULE_EVENING_REGEX);
+        if (match) {
+          const days = match[1];
+          const hours = match[2];
+          dest.push(`${meet_place}/${days}/1/${hours}`);
+          continue;
+        }
+
+        dest.push("TBA");
+        console.log(`Could not parse schedule ${meet_time} for subject ${
+          subject_id
+        }`);
+      }
+    }
+
+    let out = "";
+    if (lectures.length > 0) {
+      out += ";Lecture," + lectures.join(",")
+    }
+    if (recitations.length > 0) {
+      out += ";Recitation," + recitations.join(",")
+    }
+    if (labs.length > 0) {
+      out += ";Lab," + labs.join(",")
+    }
+    if (designs.length > 0) {
+      out += ";Design," + designs.join(",")
+    }
+    return out.slice(1) || undefined;
+  };
+
+  const [fall, iap, spring] = await Promise.all(
+    [`${year}FA`, `${year}JA`, `${year}SP`].map(fetch_term)
+  );
+  return [fall, iap, spring];
 }
 
 async function run() {

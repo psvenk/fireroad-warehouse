@@ -21,6 +21,8 @@ async function init() {
       user: process.env.WAREHOUSE_USERNAME,
       password: process.env.WAREHOUSE_PASSWORD,
       connectString: "warehouse",
+      queueMax: -1,
+      queueTimeout: 0,
     });
   } catch (err) {
     throw err;
@@ -67,6 +69,88 @@ async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
   }
 
   return await process_subject(row);
+}
+
+async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
+  console.log("Fetching index of subjects...");
+
+  let connection: oracledb.Connection | undefined;
+  let subjects: Map<string, number>;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute<[string, string]>(
+      `SELECT subject_id, academic_year FROM cis_course_catalog
+      WHERE academic_year >= :min_year
+      ORDER BY academic_year`,
+      { min_year: MIN_YEAR },
+    );
+    if (result.rows === undefined) {
+      return undefined;
+    }
+    const rows: [string, number][] = result.rows.map(([subj, year]) =>
+      [subj, parseInt(year)]
+    );
+    subjects = new Map(rows);
+  } catch (err) {
+    throw err;
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
+        throw err;
+      }
+    }
+  }
+
+  console.log(`${subjects.size} subjects received.`);
+
+  const out = new Map<string, Subject>();
+  for (let year = MIN_YEAR; year <= CURRENT_YEAR; year++) {
+    console.log(`Processing year ${year}`);
+    let rows: CisCourseCatalogRow[];
+    try {
+      connection = await pool.getConnection();
+      let result = await connection.execute<any>(
+        `SELECT * FROM cis_course_catalog
+        WHERE academic_year = :year`,
+        { year },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      if (result.rows === undefined) {
+        return undefined;
+      }
+      // Convert null to undefined
+      for (const row of result.rows) {
+        for (const key in row) {
+          row[key] ??= undefined;
+        }
+      }
+      rows = result.rows as CisCourseCatalogRow[];
+    } catch (err) {
+      throw err;
+    } finally {
+      if (connection) {
+        try {
+          await connection.close();
+        } catch (err) {
+          throw err;
+        }
+      }
+    }
+
+    await Promise.all(rows.map(async row => {
+      const subject_id = row.SUBJECT_ID;
+      if (subjects.get(subject_id) === year) {
+        const processed = await process_subject(row);
+        if (processed) {
+          out.set(subject_id, processed);
+        }
+      }
+    }));
+  }
+
+  return out;
 }
 
 /**
@@ -393,7 +477,14 @@ async function run() {
 
   try {
     await init();
-    console.log(await fetch_subject(subject_id));
+    if (false) {
+      console.log(await fetch_subject(subject_id));
+    } else {
+      const subjects = await fetch_all_subjects();
+      if (subjects) {
+        console.log(subjects.get(subject_id));
+      }
+    }
   } catch (err) {
     console.error(err);
     process.exit(1);

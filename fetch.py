@@ -1,8 +1,9 @@
 import os
-import sys
 import re
+import sys
 
 import oracledb
+from tqdm import tqdm
 
 CURRENT_YEAR = 2023
 MIN_YEAR = 2016
@@ -10,6 +11,8 @@ MIN_YEAR = 2016
 SUBJECT_ID_REGEX = r"([A-Z0-9.-]+)(\[J\])?(,?)"
 SCHEDULE_NON_EVENING_REGEX = r"([MTWRFS]+)(\d(\.\d+)?(-\d(\.\d+)?)?)"
 SCHEDULE_EVENING_REGEX = r"([MTWRFS]+)\s+EVE\s*\((.+)\)"
+
+hass_attributes = None
 
 username = os.environ.get("WAREHOUSE_USERNAME")
 password = os.environ.get("WAREHOUSE_PASSWORD")
@@ -32,6 +35,51 @@ del username, password
 oracledb.init_oracle_client()
 
 pool = oracledb.create_pool(dsn, params=pp, min=1, max=5, increment=1)
+
+def fetch_all_subjects(*, verbose=False):
+    if verbose:
+        print("Fetching index of subjects...")
+    with pool.acquire() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT subject_id, academic_year FROM cis_course_catalog
+                WHERE academic_year >= :min_year
+                ORDER BY academic_year
+            """, min_year=MIN_YEAR)
+            subjects = dict(cursor.fetchall())
+    if verbose:
+        print(f"{len(subjects)} subjects received.")
+
+    years = {year: {subj for subj in subjects if subjects[subj] == year}
+             for year in set(subjects.values())}
+
+    out = {}
+
+    for year, subjects in sorted(years.items()):
+        if verbose:
+            print(f"Processing year {year}")
+        with pool.acquire() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM cis_course_catalog
+                    WHERE academic_year = :year
+                """, year=year)
+
+                # Return results as dict
+                columns = [col[0].lower() for col in cursor.description]
+                cursor.rowfactory = lambda *args: dict(zip(columns, args))
+
+                rows = cursor.fetchall()
+
+        iterator = tqdm(rows) if verbose else rows
+        for row in iterator:
+            subject_id = row["subject_id"]
+            if subject_id in subjects:
+                processed = process_subject(row)
+                if processed is not None:
+                    out[subject_id] = processed
+
+    return out
 
 def fetch_subject(subject_id):
     """
@@ -67,7 +115,7 @@ def process_subject(row):
         columns = [col[0].lower() for col in cursor.description]
         cursor.rowfactory = lambda *args: dict(zip(columns, args))
 
-    Returns None if row is None.
+    Returns None if row is None or the subject has been renumbered.
     """
     if row is None:
         return None
@@ -139,8 +187,7 @@ def process_subject(row):
 
     if row["status_change"] is not None:
         if "New number" in row["status_change"]:
-            print("Subject has been renumbered")
-            exit(1)
+            return None
 
         match = re.match(
             r"Old number:\s+(" + SUBJECT_ID_REGEX + r")",
@@ -163,21 +210,24 @@ def process_subject(row):
 
     # TODO prerequisites/corequisites
 
-    out["url"] = row["on_line_page_number"] + "#" + out["subject_id"]
+    if row["on_line_page_number"] is not None:
+        out["url"] = row["on_line_page_number"] + "#" + out["subject_id"]
 
     hass_attribute_raw = row["hass_attribute"]
 
     if hass_attribute_raw:
-        with pool.acquire() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT description_in_bulletin FROM cis_hass_attribute
-                    WHERE hass_attribute = :hass_attribute
-                """, hass_attribute=hass_attribute_raw)
-                hass_res = cursor.fetchone()
+        global hass_attributes
+        if hass_attributes is None:
+            with pool.acquire() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT hass_attribute, description_in_bulletin
+                        FROM cis_hass_attribute
+                    """)
+                    hass_attributes = dict(cursor.fetchall())
 
-        if hass_res is not None:
-            out["hass_attribute"] = hass_res[0]
+        if hass_attribute_raw in hass_attributes:
+            out["hass_attribute"] = hass_attributes[hass_attribute_raw]
 
 
     schedule_fall, schedule_iap, schedule_spring = (
@@ -320,9 +370,17 @@ if __name__ == "__main__":
         print(f"Usage: {sys.argv[0]} <subject_id>")
         exit(1)
 
-    out = fetch_subject(subject_id)
-    if out is None:
-        print(f"Subject {subject_id} not found")
-        exit(1)
-    for k, v in out.items():
-        print(k.ljust(20) + str(v))
+    if True:
+        out = fetch_subject(subject_id)
+        if out is None:
+            print(f"Subject {subject_id} not found")
+            exit(1)
+        for k, v in out.items():
+            print(k.ljust(20) + str(v))
+    else:
+        out = fetch_all_subjects(verbose=True)
+        if subject_id not in out:
+            print(f"Subject {subject_id} not found")
+            exit(1)
+        for k, v in out["subject_id"].items():
+            print(k.ljust(20) + str(v))

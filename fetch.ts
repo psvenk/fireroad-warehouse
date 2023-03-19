@@ -1,6 +1,6 @@
 import oracledb from "oracledb";
 
-import { Subject } from "./types";
+import { CisCourseCatalogRow, Subject } from "./types";
 
 const CURRENT_YEAR = 2023;
 const MIN_YEAR = 2016;
@@ -34,10 +34,10 @@ async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
    * Returns undefined if the subject was not found.
    */
   let connection;
-  let row: any; // FIXME
+  let row;
   try {
     connection = await pool.getConnection();
-    const result = await connection.execute(
+    const result = await connection.execute<CisCourseCatalogRow>(
       `SELECT * FROM cis_course_catalog
       WHERE subject_id = :subject_id
       AND academic_year >= :min_year
@@ -63,18 +63,18 @@ async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
 
   return {
     subject_id: row.SUBJECT_ID,
-    title: row.SUBJECT_TITLE,
-    total_units: row.TOTAL_UNITS,
+    title: row.SUBJECT_TITLE ?? "",
+    total_units: row.TOTAL_UNITS ?? 0,
     offered_fall: row.IS_OFFERED_FALL_TERM === "Y",
     offered_IAP: row.IS_OFFERED_IAP === "Y",
     offered_spring: row.IS_OFFERED_SPRING_TERM === "Y",
     offered_summer: row.IS_OFFERED_SUMMER_TERM === "Y",
     public: true,
 
-    lecture_units: row.LECTURE_UNITS,
-    lab_units: row.LAB_UNITS,
-    design_units: row.DESIGN_UNITS,
-    preparation_units: row.PREPARATION_UNITS,
+    lecture_units: row.LECTURE_UNITS ?? 0,
+    lab_units: row.LAB_UNITS ?? 0,
+    design_units: row.DESIGN_UNITS ?? 0,
+    preparation_units: row.PREPARATION_UNITS ?? 0,
     is_variable_units: row.IS_VARIABLE_UNITS === "Y",
     is_half_class: false,
     has_final: false, // FIXME

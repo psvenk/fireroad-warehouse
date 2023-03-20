@@ -11,7 +11,7 @@ const SCHEDULE_EVENING_REGEX = /([MTWRFS]+)\s+EVE\s*\((.+)\)/;
 
 let pool: oracledb.Pool;
 
-async function init() {
+async function init(): Promise<void> {
   if (!process.env.WAREHOUSE_USERNAME || !process.env.WAREHOUSE_PASSWORD) {
     throw "WAREHOUSE_USERNAME and/or WAREHOUSE_PASSWORD not provided";
   }
@@ -468,7 +468,7 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
   return [fall, iap, spring];
 }
 
-async function run() {
+async function run(): Promise<void> {
   if (process.argv[2] === undefined) {
     console.error("Usage: npm start <subject_id>");
     process.exit(1);

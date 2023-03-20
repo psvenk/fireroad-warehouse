@@ -1,6 +1,6 @@
 import oracledb from "oracledb";
 
-import { CisCourseCatalogRow, Subject } from "./types";
+import { CisCourseCatalogRow, Subject, SubjectOfferedRow } from "./types";
 
 const CURRENT_YEAR = 2023;
 const MIN_YEAR = 2016;
@@ -371,10 +371,10 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
     const designs: string[] = [];
 
     let connection: oracledb.Connection | undefined;
-    let rows: (string | undefined)[][];
+    let rows: SubjectOfferedRow[];
     try {
       connection = await pool.getConnection();
-      const result = await connection.execute<(string | undefined)[]>(
+      const result = await connection.execute<any>(
         `SELECT meet_place, meet_time, is_lecture_section,
           is_recitation_section, is_lab_section, is_design_section
         FROM subject_offered
@@ -383,12 +383,19 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
         AND is_master_section = 'N'
         ORDER BY is_lecture_section DESC, is_recitation_section DESC,
           is_lab_section DESC, section_id`,
-        { subject_id, term_code }
+        { subject_id, term_code },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
       if (result.rows === undefined) {
         return undefined;
       }
-      rows = result.rows;
+      // Convert null to undefined
+      for (const row of result.rows) {
+        for (const key in row) {
+          row[key] ??= undefined;
+        }
+      }
+      rows = result.rows as SubjectOfferedRow[];
     } catch (err) {
       throw err;
     } finally {
@@ -401,33 +408,34 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
       }
     }
 
-    for (const [meet_place, meet_time, lec, rec, lab, des] of rows) {
+    for (const row of rows) {
+      console.log(row.RESPONSIBLE_FACULTY_NAME);
       let dest;
-      if (lec === "Y") {
+      if (row.IS_LECTURE_SECTION === "Y") {
         dest = lectures;
-      } else if (rec === "Y") {
+      } else if (row.IS_RECITATION_SECTION === "Y") {
         dest = recitations;
-      } else if (lab === "Y") {
+      } else if (row.IS_LAB_SECTION === "Y") {
         dest = labs;
-      } else if (des === "Y") {
+      } else if (row.IS_DESIGN_SECTION === "Y") {
         dest = designs;
       } else {
         throw `Encountered unknown section type for subject ${subject_id}`;
       }
 
-      if (!meet_place || !meet_time) {
+      if (!row.MEET_PLACE || !row.MEET_TIME) {
         dest.push("TBA");
         continue;
       }
 
-      for (let time of meet_time.split(",")) {
+      for (let time of row.MEET_TIME.split(",")) {
         time = time.trim();
 
         let match = time.match(SCHEDULE_NON_EVENING_REGEX);
         if (match) {
           const days = match[1];
           const hours = match[2];
-          dest.push(`${meet_place}/${days}/0/${hours}`);
+          dest.push(`${row.MEET_PLACE}/${days}/0/${hours}`);
           continue;
         }
 
@@ -435,12 +443,12 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
         if (match) {
           const days = match[1];
           const hours = match[2];
-          dest.push(`${meet_place}/${days}/1/${hours}`);
+          dest.push(`${row.MEET_PLACE}/${days}/1/${hours}`);
           continue;
         }
 
         dest.push("TBA");
-        console.log(`Could not parse schedule ${meet_time} for subject ${
+        console.log(`Could not parse schedule ${row.MEET_TIME} for subject ${
           subject_id
         }`);
       }

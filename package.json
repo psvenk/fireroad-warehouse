@@ -2,9 +2,9 @@
   "name": "fireroad-warehouse",
   "version": "1.0.0",
   "description": "A work-in-progress FireRoad-compatible API using MIT's Data Warehouse, intended to replace at least part of FireRoad's scraper when finished.",
-  "main": "index.js",
+  "main": "js/index.js",
   "scripts": {
-    "start": "tsc && node index.js",
+    "start": "tsc && node js/index.js",
     "tsc": "tsc"
   },
   "repository": {

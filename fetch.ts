@@ -366,11 +366,6 @@ Promise<string | undefined> {
 async function fetch_schedules(subject_id: string, year: number):
 Promise<Schedules> {
   const fetch_term = async (term_code: string): Promise<Schedule> => {
-    const lectures: string[] = [];
-    const recitations: string[] = [];
-    const labs: string[] = [];
-    const designs: string[] = [];
-
     let connection: oracledb.Connection | undefined;
     let instructor: string | undefined = undefined;
     let rows: SubjectOfferedRow[];
@@ -414,66 +409,8 @@ Promise<Schedules> {
       }
     }
 
-    for (const row of rows) {
-      let dest;
-      if (row.IS_LECTURE_SECTION === "Y") {
-        dest = lectures;
-      } else if (row.IS_RECITATION_SECTION === "Y") {
-        dest = recitations;
-      } else if (row.IS_LAB_SECTION === "Y") {
-        dest = labs;
-      } else if (row.IS_DESIGN_SECTION === "Y") {
-        dest = designs;
-      } else {
-        throw `Encountered unknown section type for subject ${subject_id}`;
-      }
-
-      if (!row.MEET_PLACE || !row.MEET_TIME) {
-        dest.push("TBA");
-        continue;
-      }
-
-      for (let time of row.MEET_TIME.split(",")) {
-        time = time.trim();
-
-        let match = time.match(SCHEDULE_NON_EVENING_REGEX);
-        if (match) {
-          const days = match[1];
-          const hours = match[2];
-          dest.push(`${row.MEET_PLACE}/${days}/0/${hours}`);
-          continue;
-        }
-
-        match = time.match(SCHEDULE_EVENING_REGEX);
-        if (match) {
-          const days = match[1];
-          const hours = match[2];
-          dest.push(`${row.MEET_PLACE}/${days}/1/${hours}`);
-          continue;
-        }
-
-        dest.push("TBA");
-        console.log(`Could not parse schedule ${row.MEET_TIME} for subject ${
-          subject_id
-        }`);
-      }
-    }
-
-    let out = "";
-    if (lectures.length > 0) {
-      out += ";Lecture," + lectures.join(",")
-    }
-    if (recitations.length > 0) {
-      out += ";Recitation," + recitations.join(",")
-    }
-    if (labs.length > 0) {
-      out += ";Lab," + labs.join(",")
-    }
-    if (designs.length > 0) {
-      out += ";Design," + designs.join(",")
-    }
     return {
-      schedule: out.slice(1) || undefined,
+      schedule: parse_schedule(subject_id, rows),
       instructor: instructor,
     };
   };
@@ -482,6 +419,74 @@ Promise<Schedules> {
     [`${year}FA`, `${year}JA`, `${year}SP`].map(fetch_term)
   );
   return { fall, iap, spring };
+}
+
+function parse_schedule(subject_id: string, rows: SubjectOfferedRow[]):
+string | undefined {
+  const lectures: string[] = [];
+  const recitations: string[] = [];
+  const labs: string[] = [];
+  const designs: string[] = [];
+
+  for (const row of rows) {
+    let dest;
+    if (row.IS_LECTURE_SECTION === "Y") {
+      dest = lectures;
+    } else if (row.IS_RECITATION_SECTION === "Y") {
+      dest = recitations;
+    } else if (row.IS_LAB_SECTION === "Y") {
+      dest = labs;
+    } else if (row.IS_DESIGN_SECTION === "Y") {
+      dest = designs;
+    } else {
+      throw `Encountered unknown section type for subject ${subject_id}`;
+    }
+
+    if (!row.MEET_PLACE || !row.MEET_TIME) {
+      dest.push("TBA");
+      continue;
+    }
+
+    for (let time of row.MEET_TIME.split(",")) {
+      time = time.trim();
+
+      let match = time.match(SCHEDULE_NON_EVENING_REGEX);
+      if (match) {
+        const days = match[1];
+        const hours = match[2];
+        dest.push(`${row.MEET_PLACE}/${days}/0/${hours}`);
+        continue;
+      }
+
+      match = time.match(SCHEDULE_EVENING_REGEX);
+      if (match) {
+        const days = match[1];
+        const hours = match[2];
+        dest.push(`${row.MEET_PLACE}/${days}/1/${hours}`);
+        continue;
+      }
+
+      dest.push("TBA");
+      console.log(`Could not parse schedule ${row.MEET_TIME} for subject ${
+        subject_id
+      }`);
+    }
+  }
+
+  let out = "";
+  if (lectures.length > 0) {
+    out += ";Lecture," + lectures.join(",")
+  }
+  if (recitations.length > 0) {
+    out += ";Recitation," + recitations.join(",")
+  }
+  if (labs.length > 0) {
+    out += ";Lab," + labs.join(",")
+  }
+  if (designs.length > 0) {
+    out += ";Design," + designs.join(",")
+  }
+  return out.slice(1) || undefined;
 }
 
 async function run(): Promise<void> {

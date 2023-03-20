@@ -22,17 +22,13 @@ async function init(): Promise<void> {
     throw "WAREHOUSE_USERNAME and/or WAREHOUSE_PASSWORD not provided";
   }
 
-  try {
-    pool = await oracledb.createPool({
-      user: process.env.WAREHOUSE_USERNAME,
-      password: process.env.WAREHOUSE_PASSWORD,
-      connectString: "warehouse",
-      queueMax: -1,
-      queueTimeout: 0,
-    });
-  } catch (err) {
-    throw err;
-  }
+  pool = await oracledb.createPool({
+    user: process.env.WAREHOUSE_USERNAME,
+    password: process.env.WAREHOUSE_PASSWORD,
+    connectString: "warehouse",
+    queueMax: -1,
+    queueTimeout: 0,
+  });
 }
 
 /**
@@ -57,20 +53,14 @@ async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
       return undefined;
     }
     // Convert null to undefined
-    let row_raw = result.rows[0];
+    const row_raw = result.rows[0];
     for (const key in row_raw) {
       row_raw[key] ??= undefined;
     }
     row = row_raw as CisCourseCatalogRow;
-  } catch (err) {
-    throw err;
   } finally {
     if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        throw err;
-      }
+      await connection.close();
     }
   }
 
@@ -97,15 +87,9 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
       [subj, parseInt(year)]
     );
     subjects = new Map(rows);
-  } catch (err) {
-    throw err;
   } finally {
     if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        throw err;
-      }
+      await connection.close();
     }
   }
 
@@ -117,7 +101,7 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
     let rows: CisCourseCatalogRow[];
     try {
       connection = await pool.getConnection();
-      let result = await connection.execute<any>(
+      const result = await connection.execute<any>(
         `SELECT * FROM cis_course_catalog
         WHERE academic_year = :year`,
         { year },
@@ -133,15 +117,9 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
         }
       }
       rows = result.rows as CisCourseCatalogRow[];
-    } catch (err) {
-      throw err;
     } finally {
       if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          throw err;
-        }
+        await connection.close();
       }
     }
 
@@ -346,15 +324,9 @@ Promise<string | undefined> {
       return undefined;
     }
     rows = result.rows;
-  } catch (err) {
-    throw err;
   } finally {
     if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        throw err;
-      }
+      await connection.close();
     }
   }
   for (const [raw, mapped] of rows) {
@@ -410,7 +382,7 @@ Promise<Schedules> {
     let rows: SubjectOfferedRow[];
     try {
       connection = await pool.getConnection();
-      let result = await connection.execute<[string | null]>(
+      const result = await connection.execute<[string | null]>(
         `SELECT responsible_faculty_name
         FROM subject_offered
         WHERE subject_id = :subject_id
@@ -420,7 +392,7 @@ Promise<Schedules> {
       );
       instructor = result.rows?.[0]?.[0] ?? undefined;
 
-      let result2 = await connection.execute<any>(
+      const result2 = await connection.execute<any>(
         `SELECT meet_place, meet_time, is_lecture_section,
           is_recitation_section, is_lab_section, is_design_section
         FROM subject_offered
@@ -442,15 +414,9 @@ Promise<Schedules> {
         }
       }
       rows = result2.rows as SubjectOfferedRow[];
-    } catch (err) {
-      throw err;
     } finally {
       if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          throw err;
-        }
+        await connection.close();
       }
     }
 
@@ -533,14 +499,13 @@ async function run(): Promise<void> {
 
   try {
     await init();
-    if (true) {
-      console.log(await fetch_subject(subject_id));
-    } else {
-      // const subjects = await fetch_all_subjects();
-      // if (subjects) {
-      //   console.log(subjects.get(subject_id));
-      // }
-    }
+
+    console.log(await fetch_subject(subject_id));
+
+    // const subjects = await fetch_all_subjects();
+    // if (subjects) {
+    //   console.log(subjects.get(subject_id));
+    // }
   } catch (err) {
     console.error(err);
     process.exit(1);

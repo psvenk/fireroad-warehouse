@@ -4,7 +4,8 @@
   "description": "A work-in-progress FireRoad-compatible API using MIT's Data Warehouse, intended to replace at least part of FireRoad's scraper when finished.",
   "main": "js/index.js",
   "scripts": {
-    "start": "tsc && node js/index.js",
+    "eslint": "eslint *.ts",
+    "start": "eslint *.ts && tsc && node js/index.js",
     "tsc": "tsc"
   },
   "repository": {
@@ -22,5 +23,10 @@
     "dotenv": "^16.0.3",
     "oracledb": "^5.5.0",
     "typescript": "^5.0.2"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.56.0",
+    "@typescript-eslint/parser": "^5.56.0",
+    "eslint": "^8.36.0"
   }
 }

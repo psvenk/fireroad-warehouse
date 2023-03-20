@@ -34,7 +34,7 @@ async function init(): Promise<void> {
 /**
  * Query the database and fetch the subject with the provided subject ID.
  *
- * Returns undefined if the subject was not found.
+ * Returns undefined if the subject was not found or has been renumbered.
  */
 async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
   let connection: oracledb.Connection | undefined;
@@ -138,16 +138,10 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
 }
 
 /**
- * Given a row from the cis_course_catalog table of the database, process it
+ * Given a row from the CIS_COURSE_CATALOG table of the database, process it
  * into a FireRoad-compatible format.
  *
- * The row should be of the format returned from a SELECT * query, transformed
- * into a dict with the following lines:
- *
- *     columns = [col[0].lower() for col in cursor.description]
- *     cursor.rowfactory = lambda *args: dict(zip(columns, args))
- *
- * Returns None if row is None or the subject has been renumbered.
+ * Returns undefined if the subject has been renumbered.
  */
 async function process_subject(row: CisCourseCatalogRow):
 Promise<Subject | undefined> {

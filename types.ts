@@ -47,6 +47,17 @@ export type Subject = {
   out_of_class_hours?: number,
 };
 
+export type Schedule = {
+  schedule: string | undefined,
+  instructor: string | undefined,
+};
+
+export type Schedules = {
+  fall: Schedule,
+  iap: Schedule,
+  spring: Schedule,
+};
+
 export type CisCourseCatalogRow = {
   ACADEMIC_YEAR: string,
   SUBJECT_ID: string,

@@ -1,6 +1,12 @@
 import oracledb from "oracledb";
 
-import { CisCourseCatalogRow, Subject, SubjectOfferedRow } from "./types";
+import {
+  CisCourseCatalogRow,
+  Schedule,
+  Schedules,
+  Subject,
+  SubjectOfferedRow,
+} from "./types";
 
 const CURRENT_YEAR = 2023;
 const MIN_YEAR = 2016;
@@ -220,17 +226,6 @@ Promise<Subject | undefined> {
     out.not_offered_year = `${year-1}-${year}`;
   }
 
-  const instructors = [];
-  if ((out.offered_fall || out.offered_summer) && row.FALL_INSTRUCTORS) {
-    instructors.push(`Fall: ${row.FALL_INSTRUCTORS}`);
-  }
-  if ((out.offered_spring || out.offered_IAP) && row.SPRING_INSTRUCTORS) {
-    instructors.push(`Spring: ${row.SPRING_INSTRUCTORS}`);
-  }
-  if (instructors.length > 0) {
-    out.instructors = instructors;
-  }
-
   switch (row.COMM_REQ_ATTRIBUTE) {
     case "CIH":
       out.communication_requirement = "CI-H";
@@ -271,9 +266,49 @@ Promise<Subject | undefined> {
     out.hass_attribute = await lookup_hass_attribute(row.HASS_ATTRIBUTE);
   }
 
-  [out.schedule_fall, out.schedule_iap, out.schedule_spring] =
-    await fetch_schedules(out.subject_id, year);
-  out.schedule = out.schedule_spring ?? out.schedule_iap ?? out.schedule_fall;
+  // Instructors data from subject_offered is more accurate than from
+  // cis_course_catalog
+  let {
+    fall: {
+      schedule: schedule_fall,
+      instructor: instructors_fall,
+    },
+    iap: {
+      schedule: schedule_iap,
+      instructor: instructors_iap,
+    },
+    spring: {
+      schedule: schedule_spring,
+      instructor: instructors_spring,
+    },
+  } = await fetch_schedules(out.subject_id, year);
+
+  // Fall back to instructors data from cis_course_catalog
+  if (out.offered_fall) {
+    instructors_fall ??= row.FALL_INSTRUCTORS;
+  }
+  if (out.offered_spring) {
+    instructors_spring ??= row.SPRING_INSTRUCTORS;
+  }
+
+  out.schedule = schedule_spring ?? schedule_iap ?? schedule_fall;
+  out.schedule_fall = schedule_fall;
+  out.schedule_iap = schedule_iap;
+  out.schedule_spring = schedule_spring;
+
+  const instructors = [];
+  if (instructors_fall) {
+    instructors.push(`Fall: ${instructors_fall}`);
+  }
+  if (instructors_iap) {
+    instructors.push(`IAP: ${instructors_iap}`);
+  }
+  if (instructors_spring) {
+    instructors.push(`Spring: ${instructors_spring}`);
+  }
+  if (instructors.length > 0) {
+    out.instructors = instructors;
+  }
 
   // TODO related subjects
 
@@ -363,18 +398,29 @@ Promise<string | undefined> {
  * Returns an array [fall, iap, spring], where each may be undefined.
  */
 async function fetch_schedules(subject_id: string, year: number):
-Promise<[string | undefined, string | undefined, string | undefined]> {
-  const fetch_term = async (term_code: string): Promise<string | undefined> => {
+Promise<Schedules> {
+  const fetch_term = async (term_code: string): Promise<Schedule> => {
     const lectures: string[] = [];
     const recitations: string[] = [];
     const labs: string[] = [];
     const designs: string[] = [];
 
     let connection: oracledb.Connection | undefined;
+    let instructor: string | undefined = undefined;
     let rows: SubjectOfferedRow[];
     try {
       connection = await pool.getConnection();
-      const result = await connection.execute<any>(
+      let result = await connection.execute<[string | null]>(
+        `SELECT responsible_faculty_name
+        FROM subject_offered
+        WHERE subject_id = :subject_id
+        AND term_code = :term_code
+        AND is_master_section = 'Y'`,
+        { subject_id, term_code }
+      );
+      instructor = result.rows?.[0]?.[0] ?? undefined;
+
+      let result2 = await connection.execute<any>(
         `SELECT meet_place, meet_time, is_lecture_section,
           is_recitation_section, is_lab_section, is_design_section
         FROM subject_offered
@@ -386,16 +432,16 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
         { subject_id, term_code },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
-      if (result.rows === undefined) {
-        return undefined;
+      if (result2.rows === undefined) {
+        return { schedule: undefined, instructor: instructor };
       }
       // Convert null to undefined
-      for (const row of result.rows) {
+      for (const row of result2.rows) {
         for (const key in row) {
           row[key] ??= undefined;
         }
       }
-      rows = result.rows as SubjectOfferedRow[];
+      rows = result2.rows as SubjectOfferedRow[];
     } catch (err) {
       throw err;
     } finally {
@@ -409,7 +455,6 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
     }
 
     for (const row of rows) {
-      console.log(row.RESPONSIBLE_FACULTY_NAME);
       let dest;
       if (row.IS_LECTURE_SECTION === "Y") {
         dest = lectures;
@@ -467,13 +512,16 @@ Promise<[string | undefined, string | undefined, string | undefined]> {
     if (designs.length > 0) {
       out += ";Design," + designs.join(",")
     }
-    return out.slice(1) || undefined;
+    return {
+      schedule: out.slice(1) || undefined,
+      instructor: instructor,
+    };
   };
 
   const [fall, iap, spring] = await Promise.all(
     [`${year}FA`, `${year}JA`, `${year}SP`].map(fetch_term)
   );
-  return [fall, iap, spring];
+  return { fall, iap, spring };
 }
 
 async function run(): Promise<void> {
@@ -485,13 +533,13 @@ async function run(): Promise<void> {
 
   try {
     await init();
-    if (false) {
+    if (true) {
       console.log(await fetch_subject(subject_id));
     } else {
-      const subjects = await fetch_all_subjects();
-      if (subjects) {
-        console.log(subjects.get(subject_id));
-      }
+      // const subjects = await fetch_all_subjects();
+      // if (subjects) {
+      //   console.log(subjects.get(subject_id));
+      // }
     }
   } catch (err) {
     console.error(err);

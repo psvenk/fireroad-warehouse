@@ -37,7 +37,7 @@ platforms):
    $ LD_LIBRARY_PATH="$ORACLE_HOME" "$ORACLE_HOME/sqlplus" "$user/$pass@warehouse"
    $ LD_LIBRARY_PATH="$ORACLE_HOME" rlwrap -H /tmp/sqlplus_hist "$ORACLE_HOME/sqlplus" "$user/$pass@warehouse"
    ```
-7. To be able to run `run.py`, create a file `.env` at the root of this
+7. To be able to run the script, create a file `.env` at the root of this
    repository with the following contents:
    ```sh
    ORACLE_HOME="/path/to/instantclient_21_9"
@@ -53,7 +53,10 @@ platforms):
 
 ## Usage
 
-`./run.py 6.1220`
+```console
+$ npm install
+$ npm start 6.1220
+```
 
 This is still a prototype script for now.
 

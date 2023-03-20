@@ -1,0 +1,26 @@
+{
+  "name": "fireroad-warehouse",
+  "version": "1.0.0",
+  "description": "A work-in-progress FireRoad-compatible API using MIT's Data Warehouse, intended to replace at least part of FireRoad's scraper when finished.",
+  "main": "js/index.js",
+  "scripts": {
+    "start": "tsc && node js/index.js",
+    "tsc": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/psvenk/fireroad-warehouse.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/psvenk/fireroad-warehouse/issues"
+  },
+  "homepage": "https://github.com/psvenk/fireroad-warehouse#readme",
+  "dependencies": {
+    "@types/oracledb": "^5.2.4",
+    "dotenv": "^16.0.3",
+    "oracledb": "^5.5.0",
+    "typescript": "^5.0.2"
+  }
+}

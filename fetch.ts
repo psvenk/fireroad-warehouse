@@ -42,11 +42,11 @@ async function fetch_subject(subject_id: string): Promise<Subject | undefined> {
   try {
     connection = await pool.getConnection();
     const result = await connection.execute<any>(
-      `SELECT * FROM cis_course_catalog
-      WHERE subject_id = :subject_id
-      AND academic_year >= :min_year
-      ORDER BY academic_year DESC`,
-      { subject_id: subject_id, min_year: MIN_YEAR },
+      `select * from CIS_COURSE_CATALOG
+      where SUBJECT_ID = :subject_id
+      and ACADEMIC_YEAR >= :MIN_YEAR
+      order by ACADEMIC_YEAR desc`,
+      { subject_id, MIN_YEAR },
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
     if (result.rows === undefined) {
@@ -75,10 +75,10 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
   try {
     connection = await pool.getConnection();
     const result = await connection.execute<[string, string]>(
-      `SELECT subject_id, academic_year FROM cis_course_catalog
-      WHERE academic_year >= :min_year
-      ORDER BY academic_year`,
-      { min_year: MIN_YEAR },
+      `select SUBJECT_ID, ACADEMIC_YEAR from CIS_COURSE_CATALOG
+      where ACADEMIC_YEAR >= :MIN_YEAR
+      order by ACADEMIC_YEAR`,
+      { MIN_YEAR },
     );
     if (result.rows === undefined) {
       return undefined;
@@ -102,8 +102,8 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
     try {
       connection = await pool.getConnection();
       const result = await connection.execute<any>(
-        `SELECT * FROM cis_course_catalog
-        WHERE academic_year = :year`,
+        `select * from CIS_COURSE_CATALOG
+        where ACADEMIC_YEAR = :year`,
         { year },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
@@ -318,7 +318,7 @@ Promise<string | undefined> {
   try {
     connection = await pool.getConnection();
     const result = await connection.execute<[string, string]>(
-      "SELECT hass_attribute, description_in_bulletin FROM cis_hass_attribute"
+      "select HASS_ATTRIBUTE, DESCRIPTION_IN_BULLETIN from CIS_HASS_ATTRIBUTE"
     );
     if (result.rows === undefined) {
       return undefined;
@@ -383,24 +383,24 @@ Promise<Schedules> {
     try {
       connection = await pool.getConnection();
       const result = await connection.execute<[string | null]>(
-        `SELECT responsible_faculty_name
-        FROM subject_offered
-        WHERE subject_id = :subject_id
-        AND term_code = :term_code
-        AND is_master_section = 'Y'`,
+        `select RESPONSIBLE_FACULTY_NAME
+        from SUBJECT_OFFERED
+        where SUBJECT_ID = :subject_id
+        and TERM_CODE = :term_code
+        and IS_MASTER_SECTION = 'Y'`,
         { subject_id, term_code }
       );
       instructor = result.rows?.[0]?.[0] ?? undefined;
 
       const result2 = await connection.execute<any>(
-        `SELECT meet_place, meet_time, is_lecture_section,
-          is_recitation_section, is_lab_section, is_design_section
-        FROM subject_offered
-        WHERE subject_id = :subject_id
-        AND term_code = :term_code
-        AND is_master_section = 'N'
-        ORDER BY is_lecture_section DESC, is_recitation_section DESC,
-          is_lab_section DESC, section_id`,
+        `select MEET_PLACE, MEET_TIME, IS_LECTURE_SECTION,
+          IS_RECITATION_SECTION, IS_LAB_SECTION, IS_DESIGN_SECTION
+        from SUBJECT_OFFERED
+        where SUBJECT_ID = :subject_id
+        and TERM_CODE = :term_code
+        and IS_MASTER_SECTION = 'N'
+        order by IS_LECTURE_SECTION desc, IS_RECITATION_SECTION desc,
+          IS_LAB_SECTION desc, SECTION_ID`,
         { subject_id, term_code },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );

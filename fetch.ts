@@ -12,7 +12,7 @@ const CURRENT_YEAR = 2023;
 const MIN_YEAR = 2016;
 
 const SUBJECT_ID_REGEX = /([A-Z0-9.-]+)(\[J\])?(,?)/;
-const SCHEDULE_NON_EVENING_REGEX = /([MTWRFS]+)(\d(\.\d+)?(-\d(\.\d+)?)?)/;
+const SCHEDULE_NON_EVENING_REGEX = /([MTWRFS]+)\s*(\d(\.\d+)?(-\d(\.\d+)?)?)/;
 const SCHEDULE_EVENING_REGEX = /([MTWRFS]+)\s+EVE\s*\((.+)\)/;
 
 let pool: oracledb.Pool;
@@ -447,7 +447,14 @@ string | undefined {
       continue;
     }
 
-    for (let time of row.MEET_TIME.split(",")) {
+    const meet_time = row.MEET_TIME.replace(":", ".");
+
+    if ([/tba/i, /tbd/i, /^\*/, /arranged/i].some(x => meet_time.match(x))) {
+      dest.push("TBA");
+      continue;
+    }
+
+    for (let time of meet_time.split(",")) {
       time = time.trim();
 
       let match = time.match(SCHEDULE_NON_EVENING_REGEX);

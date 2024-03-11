@@ -67,9 +67,7 @@ in the `warehouse-conf` directory. These are unlikely to be updated, but if
 they are, you will need to update them from [the MIT knowledge base][7].
 Extract the zip file; move `ldap.ora` and `sqlnet.ora` to `warehouse-conf`.
 Replace whatever placeholder is currently set for the `SQLNET.CRYPTO_SEED`
-entry with `"#DYNAMICALLY_GENERATED_RANDOM_SEED#"`. Note that `warehouse-conf`
-is in `.gitignore`; you'll need to comment it out temporarily to stage your
-changes.
+entry with `"#DYNAMICALLY_GENERATED_RANDOM_SEED#"`.
 
 [7]: http://kb.mit.edu/confluence/display/istcontrib/Manual+Oracle+11gR2+Installation#ManualOracle11gR2Installation-IMPORTANTInstalltheMITOracleConfigurationFiles
 

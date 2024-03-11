@@ -4,7 +4,7 @@
   "description": "A work-in-progress FireRoad-compatible API using MIT's Data Warehouse, intended to replace at least part of FireRoad's scraper when finished.",
   "main": "js/index.js",
   "scripts": {
-    "postinstall": "node scripts/set-crypto-seed.js",
+    "postinstall": "node scripts/make-local-conf.js",
     "eslint": "eslint src/*.ts",
     "start": "eslint src/*.ts && tsc && node js/index.js",
     "tsc": "tsc"

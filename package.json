@@ -4,6 +4,7 @@
   "description": "A work-in-progress FireRoad-compatible API using MIT's Data Warehouse, intended to replace at least part of FireRoad's scraper when finished.",
   "main": "js/index.js",
   "scripts": {
+    "postinstall": "node scripts/set-crypto-seed.js",
     "eslint": "eslint src/*.ts",
     "start": "eslint src/*.ts && tsc && node js/index.js",
     "tsc": "tsc"
@@ -19,14 +20,14 @@
   },
   "homepage": "https://github.com/psvenk/fireroad-warehouse#readme",
   "dependencies": {
-    "@types/oracledb": "^5.2.4",
     "dotenv": "^16.0.3",
-    "oracledb": "^5.5.0",
-    "typescript": "^5.0.2"
+    "oracledb": "^6.4.0"
   },
   "devDependencies": {
+    "@types/oracledb": "^6.2.3",
     "@typescript-eslint/eslint-plugin": "^5.56.0",
     "@typescript-eslint/parser": "^5.56.0",
-    "eslint": "^8.36.0"
+    "eslint": "^8.36.0",
+    "typescript": "^5.4.2"
   }
 }

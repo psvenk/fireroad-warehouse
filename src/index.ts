@@ -12,13 +12,15 @@ import path from "path";
 import * as dotenv from "dotenv";
 dotenv.config();
 
+const ldPathName = process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH';
+
 if (process.env.ORACLE_HOME !== undefined) {
-  // Add $ORACLE_HOME to $LD_LIBRARY_PATH
-  if (process.env.LD_LIBRARY_PATH !== undefined) {
-    process.env.LD_LIBRARY_PATH =
-      `${process.env.ORACLE_HOME}:${process.env.LD_LIBRARY_PATH}`;
+  // Add $ORACLE_HOME to dynamic library search path
+  if (process.env[ldPathName] !== undefined) {
+    process.env[ldPathName] =
+      `${process.env.ORACLE_HOME}:${process.env[ldPathName]}`;
   } else {
-    process.env.LD_LIBRARY_PATH = process.env.ORACLE_HOME;
+    process.env[ldPathName] = process.env.ORACLE_HOME;
   }
 }
 

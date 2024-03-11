@@ -8,7 +8,7 @@ intended to replace at least part of FireRoad's scraper when finished.
 ## Obtaining Data Warehouse access, and setup
 
 In order to use this, you will need credentials to access MIT's Data Warehouse.
-Here are steps for setting that up (on Linux or macOS running x86-64; details
+Here are steps for setting that up (on Linux or macOS x86-64; details
 may vary on other platforms):
 
 1. Request access to subject enrollment data using [this form][2]; specifically,
@@ -24,7 +24,9 @@ may vary on other platforms):
      versions later than what is officially supported should work fine.
    - Modern versions of `node-oracledb` have a "thin mode" that does not
      require the Instant Client to be installed, but as of the time of writing,
-     the version of Oracle Database used by MIT is too old to support it.
+     the version of Oracle Database used by MIT is both too old to support it,
+     and uses a proprietary encryption scheme that the thin client does not
+     implement.
 4. Extract both zip files; they should both create files in a new directory
    called `instantclient_21_9`.
 5. Now, if `$ORACLE_HOME` is set to the full path of your `instantclient_21_9`

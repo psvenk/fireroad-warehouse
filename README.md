@@ -12,8 +12,8 @@ Here are steps for setting that up (on Linux or macOS x86-64; details
 may vary on other platforms):
 
 1. Request access to subject enrollment data using [this form][2]; specifically,
-   access to the tables `CIS_COURSE_CATALOG`, `SUBJECT_OFFERED`, and
-   `CIS_HASS_ATTRIBUTE` is needed.
+   access to the tables [`CIS_COURSE_CATALOG`][6], [`SUBJECT_OFFERED`][7], and
+   [`CIS_HASS_ATTRIBUTE`][8] is needed.
 2. Once access has been granted, [set a password][3] for your Data Warehouse
    account.
 3. Download both the "Basic" and "SQL\*Plus" packages (as zip files) for Oracle
@@ -50,6 +50,9 @@ may vary on other platforms):
 [3]: https://warehouse-web.mit.edu/cgi-bin/change_pw.cgi
 [4]: https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html
 [5]: https://python-oracledb.readthedocs.io/en/latest/user_guide/installation.html#supported-oracle-database-versions
+[6]: http://web.mit.edu/warehouse/metadata/fields/cis_course_catalog.html
+[7]: http://web.mit.edu/warehouse/metadata/fields/subject_offered.html
+[8]: http://web.mit.edu/warehouse/metadata/fields/cis_hass_attribute.html
 
 ### Running on macOS ARM
 Oracle has not created an Instant Client distributable for macOS ARM
@@ -59,19 +62,19 @@ client through Rosetta.
 
 The installation steps are the same as above, but you'll need to install an
 x86-64 version of Node.js first and activate it everytime you use this project.
-[Here's a tutorial][6] on how to do that.
+[Here's a tutorial][9] on how to do that.
 
-[6]: https://gist.github.com/LeZuse/bf838718ff2689c5fc035c5a6825a11c
+[9]: https://gist.github.com/LeZuse/bf838718ff2689c5fc035c5a6825a11c
 
 ### Updating MIT configuration files
 The configuration files required to connect to the Data Warehouse are included
 in the `warehouse-conf` directory. These are unlikely to be updated, but if
-they are, you will need to update them from [the MIT knowledge base][7].
+they are, you will need to update them from [the MIT knowledge base][10].
 Extract the zip file; move `ldap.ora` and `sqlnet.ora` to `warehouse-conf`.
 Replace whatever placeholder is currently set for the `SQLNET.CRYPTO_SEED`
 entry with `"#DYNAMICALLY_GENERATED_RANDOM_SEED#"`.
 
-[7]: http://kb.mit.edu/confluence/display/istcontrib/Manual+Oracle+11gR2+Installation#ManualOracle11gR2Installation-IMPORTANTInstalltheMITOracleConfigurationFiles
+[10]: http://kb.mit.edu/confluence/display/istcontrib/Manual+Oracle+11gR2+Installation#ManualOracle11gR2Installation-IMPORTANTInstalltheMITOracleConfigurationFiles
 
 ## Usage
 

@@ -1,4 +1,9 @@
 import oracledb from "oracledb";
+import path from "path";
+
+oracledb.initOracleClient({
+  configDir: path.resolve(__dirname, '..', 'warehouse-conf')
+});
 
 import {
   CisCourseCatalogRow,

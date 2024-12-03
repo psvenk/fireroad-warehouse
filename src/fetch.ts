@@ -217,19 +217,11 @@ Promise<Subject | undefined> {
 
   // TODO children, parent
 
-  if (row.STATUS_CHANGE) {
-    if (row.STATUS_CHANGE.includes("New number")) {
-      // Subject has been renumbered
-      return undefined;
-    }
-    let match = row.STATUS_CHANGE.match(/Old number:\s+(.*)/);
-    if (match) {
-      match = match[1].match(SUBJECT_ID_REGEX);
-      if (match) {
-        out.old_id = normalize_subject_id(match[0]);
-      }
-    }
+  if (row.STATUS_CHANGE?.includes("New number")) {
+    // Subject has been renumbered
+    return undefined;
   }
+  out.old_id = await lookup_old_id(out.subject_id, year);
 
   out.description = row.SUBJECT_DESCRIPTION;
 
@@ -331,6 +323,40 @@ Promise<string | undefined> {
   for (const [raw, mapped] of rows) {
     if (raw === hass_attribute_raw) {
       return mapped;
+    }
+  }
+  return undefined;
+}
+
+async function lookup_old_id(subject_id: string, year: number):
+Promise<string | undefined> {
+  let connection: oracledb.Connection | undefined;
+  let rows: string[];
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute<[string | null]>(
+      `select STATUS_CHANGE from CIS_COURSE_CATALOG
+      where SUBJECT_ID = :subject_id
+      and ACADEMIC_YEAR >= :MIN_YEAR
+      and ACADEMIC_YEAR <= :year
+      order by ACADEMIC_YEAR desc`,
+      { subject_id, MIN_YEAR, year }
+    );
+    const fn = (item: [string | null]): item is [string] => item[0] !== null;
+    rows = result.rows?.filter(fn).map(([x]) => x) ?? [];
+  } finally {
+    if (connection) {
+      await connection.close();
+    }
+  }
+
+  for (const status_change of rows) {
+    let match = status_change.match(/Old number:\s+(.*)/);
+    if (match) {
+      match = match[1].match(SUBJECT_ID_REGEX);
+      if (match) {
+        return normalize_subject_id(match[0]);
+      }
     }
   }
   return undefined;

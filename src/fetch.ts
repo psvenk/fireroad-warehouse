@@ -13,7 +13,7 @@ import {
   SubjectOfferedRow,
 } from "./types";
 
-const CURRENT_YEAR = 2023;
+const CURRENT_YEAR = 2025;
 const MIN_YEAR = 2016;
 
 const SUBJECT_ID_REGEX = /([A-Z0-9.-]+)(\[J\])?(,?)/;

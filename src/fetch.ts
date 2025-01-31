@@ -17,7 +17,7 @@ const CURRENT_YEAR = 2025;
 const MIN_YEAR = 2016;
 
 const SUBJECT_ID_REGEX = /([A-Z0-9.-]+)(\[J\])?(,?)/;
-const SCHEDULE_NON_EVENING_REGEX = /([MTWRFS]+)\s*(\d(\.\d+)?(-\d(\.\d+)?)?)/;
+const SCHEDULE_NON_EVENING_REGEX = /([MTWRFS]+)\s*((1[0-2]?|[2-9])(\.\d+)?(-(1[0-2]?|[2-9])(\.\d+)?)?)/;
 const SCHEDULE_EVENING_REGEX = /([MTWRFS]+)\s+EVE\s*\((.+)\)/;
 
 let pool: oracledb.Pool;

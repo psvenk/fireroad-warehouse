@@ -49,6 +49,7 @@ export type Subject = {
 
 export type Schedule = {
   schedule: string | undefined,
+  quarter_info_dates: string | undefined,
   instructor: string | undefined,
 };
 

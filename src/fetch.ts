@@ -19,6 +19,7 @@ const MIN_YEAR = 2016;
 const SUBJECT_ID_REGEX = /([A-Z0-9.-]+)(\[J\])?(,?)/;
 const SCHEDULE_NON_EVENING_REGEX = /([MTWRFS]+)\s*((1[0-2]?|[2-9])(\.\d+)?(-(1[0-2]?|[2-9])(\.\d+)?)?)/;
 const SCHEDULE_EVENING_REGEX = /([MTWRFS]+)\s+EVE\s*\((.+)\)/;
+const SCHEDULE_QUARTER_INFO_REGEX = /\((begins|ends|meets)\s+(.+?)\)/i;
 
 let pool: oracledb.Pool;
 
@@ -144,7 +145,14 @@ async function fetch_all_subjects(): Promise<Map<string, Subject> | undefined> {
 
 /**
  * Given a row from the CIS_COURSE_CATALOG table of the database, process it
- * into a FireRoad-compatible format.
+ * into an object of type Subject. This object is compatible with the FireRoad
+ * API specification <https://fireroad.mit.edu/reference/catalog>, with the
+ * following exceptions:
+ * - The field "quarter_information" may lack specific dates, in which case its
+ *   contents will be simply "0," or "1," or "2," (denoting a first-half,
+ *   second-half, or partial-term subject, respectively). In the first two
+ *   cases, the start/end dates can be determined by consulting the academic
+ *   calendar for the relevant term.
  *
  * Returns undefined if the subject has been renumbered.
  */
@@ -196,8 +204,6 @@ Promise<Subject | undefined> {
       .map(normalize_subject_id);
   }
 
-  // TODO quarter_information (TERM_DURATION)
-
   if (row.IS_OFFERED_THIS_YEAR != "Y") {
     // Not offered this year
     out.not_offered_year = `${year-1}-${year}`;
@@ -240,17 +246,43 @@ Promise<Subject | undefined> {
   let {
     fall: {
       schedule: schedule_fall,
+      quarter_info_dates: quarter_info_dates_fall,
       instructor: instructors_fall,
     },
     iap: {
       schedule: schedule_iap,
+      quarter_info_dates: quarter_info_dates_iap,
       instructor: instructors_iap,
     },
     spring: {
       schedule: schedule_spring,
+      quarter_info_dates: quarter_info_dates_spring,
       instructor: instructors_spring,
     },
   } = await fetch_schedules(out.subject_id, year);
+
+  const quarter_info_dates =
+    quarter_info_dates_spring ??
+    quarter_info_dates_iap ??
+    quarter_info_dates_fall ??
+    "";
+
+  switch (row.TERM_DURATION) {
+    case "Full Term Subject":
+      out.quarter_information = undefined;
+      break;
+    case "First Half Term Subject":
+      out.quarter_information = "0," + quarter_info_dates;
+      break;
+    case "Second Half Term Subject":
+      out.quarter_information = "1," + quarter_info_dates;
+      break;
+    case "Partial Term Subject":
+      out.quarter_information = "2," + quarter_info_dates;
+      break;
+    default:
+      throw `Unknown TERM_DURATION: ${row.TERM_DURATION}`;
+  }
 
   // Fall back to instructors data from cis_course_catalog
   if (out.offered_fall) {
@@ -392,7 +424,11 @@ Promise<string | undefined> {
  * Output:
  *     Lecture,10-250/MWF/0/10;Recitation,34-301/M/0/11,34-302/M/1/7 PM,34-301/T/0/10
  *
- * Returns an array [fall, iap, spring], where each may be undefined.
+ * Returns a Schedules object which contains one Schedule object for each term,
+ * each optionally containing a parsed schedule string, a list of instructors
+ * (as a string), and start/end dates in the case of a partial-term subject
+ * (i.e., a subject that meets for some subdivision of the term that is not the
+ * first half or the second half).
  */
 async function fetch_schedules(subject_id: string, year: number):
 Promise<Schedules> {
@@ -425,7 +461,11 @@ Promise<Schedules> {
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
       if (result2.rows === undefined) {
-        return { schedule: undefined, instructor: instructor };
+        return {
+          schedule: undefined,
+          quarter_info_dates: undefined,
+          instructor: instructor,
+        };
       }
       // Convert null to undefined
       for (const row of result2.rows) {
@@ -440,10 +480,8 @@ Promise<Schedules> {
       }
     }
 
-    return {
-      schedule: parse_schedule(subject_id, rows),
-      instructor: instructor,
-    };
+    const { schedule, quarter_info_dates } = parse_schedule(subject_id, rows);
+    return { schedule, quarter_info_dates, instructor };
   };
 
   const [fall, iap, spring] = await Promise.all(
@@ -453,11 +491,12 @@ Promise<Schedules> {
 }
 
 function parse_schedule(subject_id: string, rows: SubjectOfferedRow[]):
-string | undefined {
+{ schedule: string | undefined, quarter_info_dates: string | undefined } {
   const lectures: string[] = [];
   const recitations: string[] = [];
   const labs: string[] = [];
   const designs: string[] = [];
+  let quarter_info_dates;
 
   for (const row of rows) {
     let dest;
@@ -488,7 +527,12 @@ string | undefined {
     for (let time of meet_time.split(",")) {
       time = time.trim();
 
-      let match = time.match(SCHEDULE_NON_EVENING_REGEX);
+      let match = time.match(SCHEDULE_QUARTER_INFO_REGEX);
+      if (match) {
+        quarter_info_dates = match[2].toLowerCase();
+      }
+
+      match = time.match(SCHEDULE_NON_EVENING_REGEX);
       if (match) {
         const days = match[1];
         const hours = match[2];
@@ -524,7 +568,10 @@ string | undefined {
   if (designs.length > 0) {
     out += ";Design," + designs.join(",")
   }
-  return out.slice(1) || undefined;
+  return {
+    schedule: out.slice(1) || undefined,
+    quarter_info_dates: quarter_info_dates,
+  };
 }
 
 async function run(): Promise<void> {
